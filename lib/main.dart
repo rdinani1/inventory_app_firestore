@@ -37,37 +37,72 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirestoreService firestoreService = FirestoreService();
+  final _formKey = GlobalKey<FormState>();
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+
+  String searchQuery = '';
 
   @override
   void dispose() {
     nameController.dispose();
     quantityController.dispose();
     priceController.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
-  Future<void> addItem() async {
-    final String name = nameController.text.trim();
-    final double? quantity = double.tryParse(quantityController.text.trim());
-    final double? price = double.tryParse(priceController.text.trim());
+  String? validateName(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Item name is required';
+    }
+    return null;
+  }
 
-    if (name.isEmpty || quantity == null || price == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter valid item details.'),
-        ),
-      );
-      return;
+  String? validateQuantity(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Quantity is required';
     }
 
+    final quantity = double.tryParse(value.trim());
+    if (quantity == null) {
+      return 'Enter a valid number';
+    }
+
+    if (quantity < 0) {
+      return 'Quantity cannot be negative';
+    }
+
+    return null;
+  }
+
+  String? validatePrice(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Price is required';
+    }
+
+    final price = double.tryParse(value.trim());
+    if (price == null) {
+      return 'Enter a valid number';
+    }
+
+    if (price < 0) {
+      return 'Price cannot be negative';
+    }
+
+    return null;
+  }
+
+  Future<void> addItem() async {
+    if (!_formKey.currentState!.validate()) return;
+
     final item = Item(
-      name: name,
-      quantity: quantity,
-      price: price,
+      name: nameController.text.trim(),
+      quantity: double.parse(quantityController.text.trim()),
+      price: double.parse(priceController.text.trim()),
     );
 
     await firestoreService.addItem(item);
@@ -75,13 +110,27 @@ class _HomeScreenState extends State<HomeScreen> {
     nameController.clear();
     quantityController.clear();
     priceController.clear();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item added successfully')),
+      );
+    }
   }
 
   Future<void> deleteItem(String id) async {
     await firestoreService.deleteItem(id);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item deleted successfully')),
+      );
+    }
   }
 
   Future<void> showEditDialog(Item item) async {
+    final editFormKey = GlobalKey<FormState>();
+
     final TextEditingController editNameController =
         TextEditingController(text: item.name);
     final TextEditingController editQuantityController =
@@ -91,82 +140,77 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Edit Item'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: editNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Item Name',
-                    border: OutlineInputBorder(),
+            child: Form(
+              key: editFormKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: editNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Item Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validateName,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: editQuantityController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: editQuantityController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validateQuantity,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Quantity',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: editPriceController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Price',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validatePrice,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: editPriceController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Price',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () async {
-                final String updatedName = editNameController.text.trim();
-                final double? updatedQuantity =
-                    double.tryParse(editQuantityController.text.trim());
-                final double? updatedPrice =
-                    double.tryParse(editPriceController.text.trim());
-
-                if (updatedName.isEmpty ||
-                    updatedQuantity == null ||
-                    updatedPrice == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter valid item details.'),
-                    ),
-                  );
-                  return;
-                }
+                if (!editFormKey.currentState!.validate()) return;
 
                 final updatedItem = Item(
                   id: item.id,
-                  name: updatedName,
-                  quantity: updatedQuantity,
-                  price: updatedPrice,
+                  name: editNameController.text.trim(),
+                  quantity: double.parse(editQuantityController.text.trim()),
+                  price: double.parse(editPriceController.text.trim()),
                 );
 
                 await firestoreService.updateItem(updatedItem);
 
-                if (context.mounted) {
-                  Navigator.pop(context);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Item updated successfully')),
+                  );
+                }
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
                 }
               },
               child: const Text('Update'),
@@ -191,46 +235,66 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(12.0),
-            child: Column(
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Item Name',
-                    border: OutlineInputBorder(),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Item Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validateName,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: quantityController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: quantityController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validateQuantity,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Quantity',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: priceController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Price',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: validatePrice,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: priceController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: addItem,
+                      child: const Text('Add Item'),
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Price',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search Items',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        searchQuery = value.toLowerCase().trim();
+                      });
+                    },
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: addItem,
-                    child: const Text('Add Item'),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -251,45 +315,85 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 final items = snapshot.data ?? [];
 
+                final filteredItems = items.where((item) {
+                  return item.name.toLowerCase().contains(searchQuery);
+                }).toList();
+
+                final totalValue = filteredItems.fold<double>(
+                  0,
+                  (sum, item) => sum + (item.quantity * item.price),
+                );
+
                 if (items.isEmpty) {
                   return const Center(
                     child: Text('No items available.'),
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 12,
-                        vertical: 6,
+                        vertical: 8,
                       ),
-                      child: ListTile(
-                        title: Text(item.name),
-                        subtitle: Text(
-                          'Quantity: ${item.quantity} | Price: \$${item.price.toStringAsFixed(2)}',
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => showEditDialog(item),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: item.id == null
-                                  ? null
-                                  : () => deleteItem(item.id!),
-                            ),
-                          ],
+                        child: Text(
+                          'Total Inventory Value: \$${totalValue.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    Expanded(
+                      child: filteredItems.isEmpty
+                          ? const Center(
+                              child: Text('No matching items found.'),
+                            )
+                          : ListView.builder(
+                              itemCount: filteredItems.length,
+                              itemBuilder: (context, index) {
+                                final item = filteredItems[index];
+
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  child: ListTile(
+                                    title: Text(item.name),
+                                    subtitle: Text(
+                                      'Quantity: ${item.quantity} | Price: \$${item.price.toStringAsFixed(2)}',
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit),
+                                          onPressed: () => showEditDialog(item),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete),
+                                          onPressed: item.id == null
+                                              ? null
+                                              : () => deleteItem(item.id!),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 );
               },
             ),
