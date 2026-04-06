@@ -1,7 +1,7 @@
 class Item {
   final String? id;
   final String name;
-  final int quantity;
+  final double quantity; // changed to double
   final double price;
 
   Item({
@@ -23,7 +23,7 @@ class Item {
     return Item(
       id: id,
       name: map['name'] ?? '',
-      quantity: (map['quantity'] ?? 0) as int,
+      quantity: (map['quantity'] ?? 0).toDouble(),
       price: (map['price'] ?? 0).toDouble(),
     );
   }
